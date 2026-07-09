@@ -1,0 +1,41 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next
+/out
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# typescript
+next-env.d.ts
+*.tsbuildinfo
+
+inference_summary
+
+# pnpm (this project uses npm)
+pnpm-lock.yaml
+
+# agent / skill tooling + scratch
+.agents/
+.context/
+.job-agent/
+public/artifacts/
+skills-lock.json
+agent-experience-*.html
+.claude/skills/
+.claude/settings.local.json
