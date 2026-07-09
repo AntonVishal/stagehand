@@ -8,6 +8,7 @@ import type {
   JobsState,
   JobStatus,
 } from "@/lib/jobs/types";
+import { runtimeState } from "@/lib/jobs/runtime";
 
 const DATA_DIR = path.join(process.cwd(), ".job-agent");
 const STORE_PATH = path.join(DATA_DIR, "jobs.json");
@@ -33,19 +34,6 @@ async function withStoreLock<T>(operation: () => Promise<T>): Promise<T> {
 
 async function ensureStore() {
   await mkdir(DATA_DIR, { recursive: true });
-}
-
-function runtimeState() {
-  const required = [
-    "BROWSERBASE_API_KEY",
-    "BROWSERBASE_PROJECT_ID",
-    "AI_GATEWAY_API_KEY",
-  ];
-  const missingEnv = required.filter((key) => !process.env[key]);
-  return {
-    canRunApplications: missingEnv.length === 0,
-    missingEnv,
-  };
 }
 
 function sortState(state: JobsState): JobsState {

@@ -1,18 +1,22 @@
-import type { JobApplication, JobLog } from "@/lib/jobs/types";
-import { appendJobLog, updateJob } from "@/lib/jobs/store";
+import type { JobApplication } from "@/lib/jobs/types";
+import { updateJob } from "@/lib/jobs/store";
 import {
   generateApplicationArtifacts,
   preferredResumePath,
 } from "@/lib/jobs/latex";
 import { tailorForJob } from "@/lib/jobs/tailor";
+import { getGatewayBaseUrl, getGatewayModelId } from "@/lib/jobs/stagehandLlm";
+import { formatError } from "@/lib/jobs/errorFormatting";
+import { logJob } from "@/lib/jobs/jobLogger";
+import { hasRunEnv, missingRunEnv } from "@/lib/jobs/runtime";
 import {
-  createStagehandLlmClient,
-  getGatewayBaseUrl,
-  getGatewayModelId,
-} from "@/lib/jobs/stagehandLlm";
+  type BrowserbaseSession,
+  type StagehandInstance,
+  createApplicationStagehand,
+  createJobStagehand,
+  getBrowserbaseSession,
+} from "@/lib/jobs/stagehandSession";
 import { z } from "zod";
-
-type StagehandModule = typeof import("@browserbasehq/stagehand");
 
 const JobExtractionSchema = z.object({
   company: z.string().optional(),
@@ -22,22 +26,20 @@ const JobExtractionSchema = z.object({
   questions: z.array(z.string()).default([]),
 });
 
-type StagehandInstance = InstanceType<StagehandModule["Stagehand"]>;
-type LogLevel = JobLog["level"];
 type JobExtraction = z.infer<typeof JobExtractionSchema>;
 
 export async function runApplicationToReview(
   job: JobApplication,
 ): Promise<JobApplication> {
   let stagehand: StagehandInstance | null = null;
-  let browserbaseSession: { sessionId?: string; replayUrl?: string } = {};
+  let browserbaseSession: BrowserbaseSession = {};
 
   await logJob(
     job.id,
     "info",
     `Starting ${job.sourceLabel} application: ${job.role} (${job.url})`,
   );
-  if (!hasBrowserbaseEnv()) {
+  if (!hasRunEnv()) {
     const missing = missingRunEnv();
     const message = `Cannot run application automation. Missing env: ${missing.join(", ")}.`;
     await logJob(job.id, "error", message);
@@ -49,26 +51,13 @@ export async function runApplicationToReview(
   }
 
   try {
-    const { Stagehand } = await loadStagehand();
     await logJob(
       job.id,
       "info",
       `Creating Browserbase Stagehand session with model ${getGatewayModelId()} via ${getGatewayBaseUrl()}.`,
     );
 
-    const stagehandLogger = createStagehandLogger(job.id);
-    stagehand = new Stagehand({
-      env: "BROWSERBASE",
-      apiKey: process.env.BROWSERBASE_API_KEY,
-      projectId: process.env.BROWSERBASE_PROJECT_ID,
-      verbose: 1,
-      disableAPI: true,
-      disablePino: true,
-      logInferenceToFile: true,
-      cacheDir: ".job-agent/stagehand-cache",
-      logger: stagehandLogger,
-      llmClient: await createStagehandLlmClient(),
-    });
+    stagehand = await createApplicationStagehand(job.id);
     await stagehand.init();
     browserbaseSession = getBrowserbaseSession(stagehand);
     await logJob(
@@ -231,7 +220,7 @@ export async function approveAndSubmit(
     throw new Error("Only jobs waiting for review can be submitted.");
   }
 
-  if (!hasBrowserbaseEnv()) {
+  if (!hasRunEnv()) {
     return updateJob(job.id, {
       status: "submitted",
       submittedAt: new Date().toISOString(),
@@ -241,18 +230,7 @@ export async function approveAndSubmit(
   }
 
   try {
-    const { Stagehand } = await loadStagehand();
-    const stagehandLogger = createStagehandLogger(job.id);
-    const stagehand = new Stagehand({
-      env: "BROWSERBASE",
-      apiKey: process.env.BROWSERBASE_API_KEY,
-      projectId: process.env.BROWSERBASE_PROJECT_ID,
-      verbose: 1,
-      disableAPI: true,
-      disablePino: true,
-      logger: stagehandLogger,
-      llmClient: await createStagehandLlmClient(),
-    });
+    const stagehand = await createJobStagehand(job.id);
     await stagehand.init();
     const page = stagehand.context.pages()[0];
     await page.goto(job.url, { waitUntil: "load" });
@@ -276,122 +254,4 @@ export async function approveAndSubmit(
       lastAction: "Submit attempt failed after approval.",
     });
   }
-}
-
-function hasBrowserbaseEnv() {
-  return missingRunEnv().length === 0;
-}
-
-function missingRunEnv() {
-  return [
-    "BROWSERBASE_API_KEY",
-    "BROWSERBASE_PROJECT_ID",
-    "AI_GATEWAY_API_KEY",
-  ].filter((key) => !process.env[key]);
-}
-
-async function loadStagehand(): Promise<StagehandModule> {
-  const packageName =
-    process.env.STAGEHAND_PACKAGE_NAME ?? "@browserbasehq/stagehand";
-  const dynamicImport = new Function(
-    "specifier",
-    "return import(specifier)",
-  ) as (specifier: string) => Promise<StagehandModule>;
-  return dynamicImport(packageName);
-}
-
-function getBrowserbaseSession(stagehand: unknown): {
-  sessionId?: string;
-  replayUrl?: string;
-} {
-  const record = stagehand as Record<string, unknown>;
-  const sessionId =
-    typeof record.browserbaseSessionID === "string"
-      ? record.browserbaseSessionID
-      : undefined;
-  return {
-    sessionId,
-    replayUrl: sessionId
-      ? `https://www.browserbase.com/sessions/${sessionId}`
-      : undefined,
-  };
-}
-
-function createStagehandLogger(jobId: string) {
-  return (line: { category?: string; message: string; level?: number }) => {
-    const message = formatStagehandLog(line);
-    if (!message) return;
-    void logJob(jobId, line.level === 0 ? "error" : "info", message);
-  };
-}
-
-function formatStagehandLog(line: {
-  category?: string;
-  message: string;
-  level?: number;
-}) {
-  const message = line.message.trim();
-  if (!message) return "";
-  const category = line.category
-    ? `[stagehand:${line.category}] `
-    : "[stagehand] ";
-  return `${category}${message}`;
-}
-
-async function logJob(jobId: string, level: LogLevel, message: string) {
-  const prefix = `[job-agent][job:${jobId}][${level}]`;
-  if (level === "error") console.error(prefix, message);
-  else console.log(prefix, message);
-  await appendJobLog({ jobId, level, message });
-}
-
-function formatError(error: unknown) {
-  if (!(error instanceof Error)) return "Unknown Stagehand failure";
-
-  const parts = [error.message];
-  const httpDetails = extractHttpErrorDetails(error);
-  if (httpDetails) parts.push(httpDetails);
-
-  if (error.cause) {
-    const causeMessage = formatErrorCause(error.cause);
-    if (causeMessage) parts.push(`Cause: ${causeMessage}`);
-  }
-
-  return parts.join(" ");
-}
-
-function formatErrorCause(cause: unknown) {
-  if (cause instanceof Error) {
-    const httpDetails = extractHttpErrorDetails(cause);
-    return httpDetails ? `${cause.message} (${httpDetails})` : cause.message;
-  }
-  if (typeof cause === "string" && cause.trim()) return cause;
-  return "";
-}
-
-function extractHttpErrorDetails(error: unknown) {
-  if (!error || typeof error !== "object") return "";
-
-  const record = error as Record<string, unknown>;
-  const statusCode =
-    typeof record.statusCode === "number" ? record.statusCode : undefined;
-  const url = typeof record.url === "string" ? record.url : undefined;
-  const responseBody =
-    typeof record.responseBody === "string" ? record.responseBody.trim() : "";
-
-  if (!statusCode && !url && !responseBody) return "";
-
-  const statusText =
-    typeof record.statusText === "string" ? record.statusText : undefined;
-  const statusLabel = statusCode
-    ? `HTTP ${statusCode}${statusText ? ` ${statusText}` : ""}`
-    : statusText || "HTTP error";
-  const location = url ? ` at ${url}` : "";
-  const body = responseBody ? ` — ${truncate(responseBody, 240)}` : "";
-
-  return `LLM request failed: ${statusLabel}${location}${body}`;
-}
-
-function truncate(value: string, maxLength: number) {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}...`;
 }

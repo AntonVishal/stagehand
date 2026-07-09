@@ -1,7 +1,8 @@
 {
-  "name": "personlised-job-applier",
+  "name": "personalised-job-applier",
   "version": "0.1.0",
-  "private": true,
+  "description": "Stagehand + Browserbase demo for human-reviewed, personalised job applications.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "next dev",

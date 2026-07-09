@@ -9,7 +9,6 @@ import type {
   JobQuestion,
   TailoredResume,
 } from "@/lib/jobs/types";
-import { slug } from "@/lib/jobs/discovery";
 
 const execFileAsync = promisify(execFile);
 
@@ -213,10 +212,6 @@ ${questions
 
 export function preferredResumePath(artifacts: Artifact[]) {
   return artifacts.find((artifact) => artifact.kind === "resume")?.path;
-}
-
-export function safeArtifactStem(job: JobApplication) {
-  return slug(`${job.company}-${job.role}`);
 }
 
 function fallbackResume(job: JobApplication): TailoredResume {

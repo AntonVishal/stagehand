@@ -4,6 +4,11 @@ A DevRel-ready Stagehand + Browserbase demo for discovering job leads, generatin
 tailored LaTeX application materials, uploading PDFs through Stagehand file
 inputs, and stopping at a human review gate before final submit.
 
+This is intentionally not a mass-apply bot. It demonstrates the hard browser
+automation primitive: extracting a real application page, generating reviewable
+materials, filling visible fields, uploading a local resume PDF through
+Stagehand, and then stopping for a human decision.
+
 ## Run
 
 ```bash
@@ -64,3 +69,24 @@ submit.
 
 Generated runtime state lives in `.job-agent/` and `public/artifacts/`; both are
 ignored.
+
+## Project Structure
+
+```text
+app/api/jobs/              Next.js route handlers for discovery and runs
+components/jobs/           Client UI, split by search, table, logs, and state
+lib/jobs/discovery.ts      Search-query generation and URL extraction
+lib/jobs/stagehandRunner.ts End-to-end Stagehand application pipeline
+lib/jobs/stagehandSession.ts Browserbase Stagehand session creation
+lib/jobs/tailor.ts         AI-generated answers and resume tailoring
+lib/jobs/latex.ts          LaTeX/PDF artifact generation
+lib/jobs/store.ts          Local JSON store with serialized writes
+```
+
+## Safety Model
+
+- The app queues URLs in search-result order; it does not rank or invent jobs.
+- Generated answers and PDFs are artifacts for review, not automatic truth.
+- Stagehand fills fields and uploads the resume, but the run stops at
+  `needs_review`.
+- Final submit is a separate explicit approval action.
