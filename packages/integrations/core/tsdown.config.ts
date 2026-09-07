@@ -2,6 +2,7 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig({
   entry: {
+    "codemode/index": "src/codemode/index.ts",
     "codemode/stdio-server": "src/codemode/stdio-server.ts",
     "facade/index": "src/facade/index.ts",
     "facade/stdio-server": "src/facade/stdio-server.ts",
