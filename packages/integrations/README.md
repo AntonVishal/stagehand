@@ -13,6 +13,7 @@ else, never restated.
 | `core/`        | The `@browserbasehq/stagehand-integrations` package: the facade contract, `StagehandFacadeTools`, the `stagehand-facade` stdio MCP bin, and the code-mode MCP host scaffold. |
 | `claude-code/` | Claude Agent SDK example (programmatic MCP mount) plus a `.mcp.json` for connecting a running Claude Code CLI.                                                               |
 | `codex/`       | Codex SDK example (config-override MCP mount) plus a `config.toml` template for the codex CLI.                                                                               |
+| `antigravity/` | Antigravity CLI workspace MCP configuration and browser-only custom agent.                                                                                                   |
 | `cursor/`      | Cursor agent CLI configuration template (`.cursor/mcp.json`) and AGENTS.md guidance — the CLI consumes the facade as a project MCP server.                                   |
 | `crewai/`      | Python CrewAI example over MCP/stdio (uv project).                                                                                                                           |
 | `deepagents/`  | Python LangChain Deep Agents integrations: a local stdio MCP server and a Managed Deep Agents project with native tools.                                                     |

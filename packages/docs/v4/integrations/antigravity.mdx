@@ -1,0 +1,114 @@
+---
+title: "Antigravity CLI"
+description: "Give an Antigravity CLI agent persistent Stagehand browser tools over MCP/stdio."
+---
+
+The Antigravity CLI integration mounts the Stagehand facade as a workspace MCP server. One facade
+process owns the browser for the full CLI session and exposes `run`, `snapshot`, and `screenshot`.
+
+<Note>
+Stagehand ships this experimental integration from the repository rather than publishing it as a
+standalone adapter.
+</Note>
+
+## Prerequisites
+
+- Node.js 24 or newer
+- pnpm 11.10.0
+- Antigravity CLI 1.1.25 or newer and an existing `agy` login
+- A current Google Chrome installation for local browser mode
+
+## Quickstart
+
+<Steps>
+  <Step title="Clone and build Stagehand">
+```bash
+git clone https://github.com/browserbase/stagehand.git
+cd stagehand
+pnpm install --frozen-lockfile
+pnpm exec turbo run build \
+  --filter @browserbasehq/stagehand-integrations
+```
+  </Step>
+  <Step title="Authenticate Antigravity">
+Launch the CLI once and finish its sign-in flow:
+
+```bash
+agy
+```
+
+Headless runs reuse this cached login.
+  </Step>
+  <Step title="Choose the browser">
+The integration uses local Chrome when `BROWSERBASE_API_KEY` is unset. To use Browserbase:
+
+```bash
+export STAGEHAND_BROWSER="browserbase"
+export BROWSERBASE_API_KEY="your-browserbase-api-key"
+```
+  </Step>
+  <Step title="Run a browser task">
+```bash
+cd packages/integrations/antigravity
+agy --agent stagehand
+```
+
+Ask the agent to open a page, take a snapshot, and report what it finds.
+  </Step>
+</Steps>
+
+## Run headlessly
+
+```bash
+agy -p \
+  "Open https://example.com, take a snapshot, and report the page title." \
+  --agent stagehand \
+  --sandbox \
+  --disable-slash-commands \
+  --dangerously-skip-permissions
+```
+
+Antigravity emits machine-readable progress with `--output-format stream-json`. Stagehand's eval
+harness uses that stream to preserve tool arguments, results, browser evidence, completion status,
+and token usage.
+
+## Configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `STAGEHAND_BROWSER` | Select `local` or `browserbase`. Browserbase is inferred when its API key is present. |
+| `BROWSERBASE_API_KEY` | Required for Browserbase. |
+| `BROWSERBASE_PROJECT_ID` | Optional Browserbase project ID. |
+| `STAGEHAND_MODEL_NAME` | Optional model for Stagehand AI methods called inside `run`. |
+| `STAGEHAND_MODEL_API_KEY` | Credential for `STAGEHAND_MODEL_NAME`. |
+| `ANTIGRAVITY_CLI_PATH` | Optional path to the `agy` executable for programmatic runs. |
+| `EVAL_ANTIGRAVITY_EXPLICIT_MCP_TOOLS` | Set to `1` in evals if `tools: []` plus `inheritMcp` drops MCP tools. The harness then lists `server__run`, `server__snapshot`, and `server__screenshot` in the agent allowlist. |
+
+## How the session works
+
+Antigravity discovers `.agents/mcp_config.json` in this integration directory. The file starts the
+built Stagehand facade over stdio. The workspace-scoped `stagehand` agent is MCP-only: its
+frontmatter sets `inheritMcp: true` and an explicit `tools` allowlist (`stagehand__run`,
+`stagehand__snapshot`, `stagehand__screenshot`). Empty `tools: []` still advertises built-ins
+such as `search_web` and `read_url_content`, so the harness lists the mounted MCP tools by name.
+Prompt instructions alone do not enforce that allowlist.
+
+The facade stays alive for the CLI session, so navigation, cookies, tabs, and snapshot IDs carry
+across calls. Do not replace it with a new MCP process for every call.
+
+Antigravity's login remains in its user profile. The facade receives browser and Stagehand
+configuration through its MCP process environment; it does not need the Antigravity credential.
+
+<Warning>
+`--dangerously-skip-permissions` approves all tool calls. Pair it with `--sandbox`, use trusted
+prompts, and run evals in the disposable workspace created by the harness.
+</Warning>
+
+<Warning>
+`run` executes model-authored JavaScript in the browser. Use Browserbase for untrusted tasks and
+review the [integration security boundary](/v4/integrations/overview#security-boundary).
+</Warning>
+
+<Card title="Antigravity integration source" icon="github" href="https://github.com/browserbase/stagehand/tree/main/packages/integrations/antigravity">
+  Read the MCP configuration, workspace agent, CLI adapter, and tests.
+</Card>
